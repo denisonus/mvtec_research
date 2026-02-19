@@ -1,11 +1,42 @@
-# MVTec AD 2 Setup (Minimal)
+# MVTec AD 2 Setup
 
-## 1) Activate environment
+## Extract and place data like this
+```bash
+data/can/can/test_public...
+```
+
+## Activate environment
 ```bash
 source .venv/bin/activate
 ```
 
-## 2) Run local evaluation (example: `can`)
+## Install dependencies
+```bash
+pip install -r requirements.txt
+```
+
+## Train baseline (AE/VAE, 512 patches)
+```bash
+python workspace/local_eval/train_ae_vae.py \
+  --dataset_base_dir data/can \
+  --object_name can \
+  --model_type ae \
+  --patch_size 512 \
+  --epochs 5 \
+  --batch_size 4 \
+  --output_dir workspace/local_eval/experiments/exp01/checkpoints
+```
+
+## Infer anomaly maps
+```bash
+python workspace/local_eval/infer_ae_vae.py \
+  --dataset_base_dir data/can \
+  --object_name can \
+  --checkpoint workspace/local_eval/experiments/exp01/checkpoints/best.pt \
+  --anomaly_maps_dir workspace/local_eval/experiments/exp01/anomaly_maps
+```
+
+## Run local evaluation
 ```bash
 cd mvtec_ad_evaluation
 python evaluate_experiment.py \
@@ -16,12 +47,12 @@ python evaluate_experiment.py \
   --pro_integration_limit 0.3
 ```
 
-## 3) Print metrics
+## Print metrics
 ```bash
 python print_metrics.py --metrics_folder ../workspace/local_eval/metrics
 ```
 
-## 4) Prepare submission archive
+## Prepare submission archive
 Put predictions into:
 
 - `workspace/submission_template/anomaly_images/...`
