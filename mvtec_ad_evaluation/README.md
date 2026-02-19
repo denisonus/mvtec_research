@@ -1,7 +1,7 @@
-# Evaluate your experiments on the MVTec AD dataset
+# Evaluate your experiments on the MVTec AD 2 dataset
 
 The evaluation scripts can be used to assess the performance of a method on the
-MVTec AD dataset. Given a directory with anomaly maps, the scripts compute
+MVTec AD 2 dataset (local evaluation on `test_public`). Given a directory with anomaly maps, the scripts compute
 the area under the PRO curve for anomaly localization. Additionally, the area
 under the ROC curve for anomaly classification is computed.
 
@@ -36,13 +36,13 @@ It requires an anomaly map to be present for each test sample in our dataset in
 `.tif` or `.tiff` format. Anomaly maps must contain real-valued anomaly scores
 and their size must match the one of the original dataset images. Anomaly maps
 must all share the same base directory and adhere to the following folder
-structure:
-`<anomaly_maps_dir>/<object_name>/test/<defect_name>/<image_id>.tiff`
+structure for MVTec AD 2:
+`<anomaly_maps_dir>/<object_name>/test_public/<defect_name>/<image_id>.tiff`
 
 To evaluate a single experiment, the script `evaluate_experiment.py` can be
 used. It requires the following user arguments:
 
-- `dataset_base_dir`: Base directory that contains the MVTec AD dataset.
+- `dataset_base_dir`: Base directory that contains the MVTec AD 2 dataset.
 - `anomaly_maps_dir`: Base directory that contains the corresponding anomaly
   maps.
 
@@ -56,11 +56,14 @@ Optional parameters can be specified as follows:
 
 A possible example call to this script would be:
 ```
-  python evaluate_experiment.py --dataset_base_dir 'path/to/dataset/' \
-                                --anomaly_maps_dir 'path/to/anomaly_maps/' \
-                                --output_dir 'metrics/'
+  python evaluate_experiment.py --dataset_base_dir 'path/to/mvtec_ad_2/' \
+                                --anomaly_maps_dir 'path/to/anomaly_images/' \
+                                --output_dir 'metrics/' \
                                 --pro_integration_limit 0.3
 ```
+
+Supported objects (MVTec AD 2):
+`can, fabric, fruit_jelly, rice, sheet_metal, vial, wallplugs, walnuts`
 
 ## Evaluate multiple experiments.
 If more than a single experiment should be evaluated at once, the script
@@ -85,7 +88,7 @@ maps can be specified in a `config.json` file with the following structure:
 The evaluation can be run by calling `evaluate_multiple_experiments.py`,
 providing the following user arguments:
 
-- `dataset_base_dir`: Base directory that contains the MVTec AD dataset.
+- `dataset_base_dir`: Base directory that contains the MVTec AD 2 dataset.
 - `experiment_configs`: Path to the above `config.json` that contains all
   experiments to be evaluated.
 
@@ -98,7 +101,7 @@ Optional parameters can be specified as follows:
 A possible example call to this script would be:
 ```
 python evaluate_multiple_experiments.py \
-  --dataset_base_dir 'path/to/dataset/' \
+  --dataset_base_dir 'path/to/mvtec_ad_2/' \
   --experiment_configs 'experiment_configs.json' \
   --output_dir 'metrics/' \
   --pro_integration_limit 0.3

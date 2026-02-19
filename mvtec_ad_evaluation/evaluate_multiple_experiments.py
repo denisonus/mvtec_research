@@ -10,6 +10,7 @@ __copyright__ = "2021, MVTec Software GmbH"
 import argparse
 import json
 import subprocess
+import sys
 from os import path
 
 
@@ -29,7 +30,7 @@ def parse_user_arguments():
     parser.add_argument('--dataset_base_dir',
                         required=True,
                         help="""Path to the directory that contains the dataset
-                                images of the MVTec AD dataset.""")
+                    images of the MVTec AD 2 dataset.""")
 
     parser.add_argument('--output_dir',
                         default='metrics/',
@@ -72,11 +73,11 @@ def main():
             experiment_configs['anomaly_maps_dirs'][experiment_id])
 
         # Set up python call for the evaluation script.
-        call = ['python', 'evaluate_experiment.py',
+        call = [sys.executable, 'evaluate_experiment.py',
                 '--anomaly_maps_dir', anomaly_maps_dir,
                 '--dataset_base_dir', args.dataset_base_dir,
                 '--output_dir', path.join(args.output_dir, experiment_id),
-                '--pro_integration_limit', str(args.pro_integration_limit)]
+            '--pro_integration_limit', str(args.pro_integration_limit)]
 
         # Run evaluation script.
         if args.dry_run == 'False':

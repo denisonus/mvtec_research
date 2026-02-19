@@ -17,7 +17,7 @@ from roc_curve_util import compute_classification_roc
 
 
 def parse_user_arguments():
-    """Parse user arguments for the evaluation of a method on the MVTec AD
+    """Parse user arguments for the evaluation of a method on the MVTec AD 2
     dataset.
 
     Returns:
@@ -33,7 +33,7 @@ def parse_user_arguments():
     parser.add_argument('--dataset_base_dir',
                         required=True,
                         help="""Path to the directory that contains the dataset
-                                images of the MVTec AD dataset.""")
+                    images of the MVTec AD 2 dataset.""")
 
     parser.add_argument('--output_dir',
                         help="""Path to the directory to store evaluation
@@ -62,12 +62,15 @@ def parse_user_arguments():
     return args
 
 
-def parse_dataset_files(object_name, dataset_base_dir, anomaly_maps_dir):
-    """Parse the filenames for one object of the MVTec AD dataset.
+def parse_dataset_files(
+    object_name,
+    dataset_base_dir,
+    anomaly_maps_dir):
+    """Parse the filenames for one object of the MVTec AD 2 dataset.
 
     Args:
         object_name: Name of the dataset object.
-        dataset_base_dir: Base directory of the MVTec AD dataset.
+        dataset_base_dir: Base directory of the MVTec AD 2 dataset.
         anomaly_maps_dir: Base directory where anomaly maps are located.
     """
     assert object_name in util.OBJECT_NAMES
@@ -79,12 +82,26 @@ def parse_dataset_files(object_name, dataset_base_dir, anomaly_maps_dir):
     prediction_filenames = []
 
     # Test images are located here.
-    test_dir = path.join(dataset_base_dir, object_name, 'test')
-    gt_base_dir = path.join(dataset_base_dir, object_name, 'ground_truth')
-    anomaly_maps_base_dir = path.join(anomaly_maps_dir, object_name, 'test')
+    test_dir = path.join(dataset_base_dir, object_name, 'test_public')
+    if not path.isdir(test_dir):
+        raise FileNotFoundError(
+            f"Could not find expected directory: {test_dir}."
+        )
+
+    gt_base_dir = path.join(
+        dataset_base_dir, object_name, 'test_public', 'ground_truth')
+    anomaly_maps_base_dir = path.join(
+        anomaly_maps_dir, object_name, 'test_public')
 
     # List all ground truth and corresponding anomaly images.
-    for subdir in listdir(str(test_dir)):
+    for subdir in sorted(listdir(str(test_dir))):
+
+        subdir_path = path.join(test_dir, subdir)
+        if not path.isdir(subdir_path):
+            continue
+
+        if subdir == 'ground_truth':
+            continue
 
         if not subdir.replace('_', '').isalpha():
             continue
@@ -92,13 +109,22 @@ def parse_dataset_files(object_name, dataset_base_dir, anomaly_maps_dir):
         # Get paths to all test images in the dataset for this subdir.
         test_images = [path.splitext(file)[0]
                        for file
-                       in listdir(path.join(test_dir, subdir))
+                       in listdir(subdir_path)
                        if path.splitext(file)[1] == '.png']
 
         # If subdir is not 'good', derive corresponding GT names.
         if subdir != 'good':
+            if path.isdir(path.join(gt_base_dir, subdir)):
+                gt_subdir = subdir
+            elif path.isdir(path.join(gt_base_dir, 'bad')):
+                gt_subdir = 'bad'
+            else:
+                raise FileNotFoundError(
+                    f"Could not find ground-truth subdirectory for "
+                    f"{object_name}/{subdir} below {gt_base_dir}."
+                )
             gt_filenames.extend(
-                [path.join(gt_base_dir, subdir, file + '_mask.png')
+                [path.join(gt_base_dir, gt_subdir, file + '_mask.png')
                  for file in test_images])
         else:
             # No ground truth maps exist for anomaly-free images.
@@ -185,7 +211,7 @@ def calculate_au_pro_au_roc(gt_filenames,
 
 def main():
     """Calculate the performance metrics for a single experiment on the
-    MVTec AD dataset.
+    MVTec AD 2 dataset.
     """
     # Parse user arguments.
     args = parse_user_arguments()
