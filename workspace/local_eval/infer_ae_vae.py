@@ -28,10 +28,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    
     import torch
     from patch_anomaly.data import extract_patches, list_test_public_images, load_rgb_image, stitch_patch_maps
     from patch_anomaly.models import build_model
+
+    if args.batch_size <= 0:
+        raise ValueError("--batch_size must be a positive integer.")
+    if not args.checkpoint.is_file():
+        raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -45,6 +49,11 @@ def main() -> None:
     model_type = checkpoint["model_type"]
     patch_size = int(checkpoint["patch_size"])
     latent_channels = int(checkpoint["latent_channels"])
+    if patch_size % 16 != 0:
+        raise ValueError(
+            f"Invalid checkpoint patch_size={patch_size}. "
+            "Expected a value divisible by 16 for this model architecture."
+        )
 
     model = build_model(model_type=model_type, latent_channels=latent_channels).to(device)
     model.load_state_dict(checkpoint["state_dict"])

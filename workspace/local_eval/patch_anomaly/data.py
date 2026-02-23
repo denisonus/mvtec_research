@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
@@ -82,9 +83,18 @@ class TrainGoodPatchDataset(Dataset):
         object_name: str,
         patch_size: int,
         image_limit: int | None = None,
+        cache_size: int = 8,
     ):
+        if patch_size <= 0:
+            raise ValueError("patch_size must be a positive integer.")
         self.patch_size = patch_size
+        self.cache_size = max(int(cache_size), 1)
         image_dir = dataset_base_dir / object_name / "train" / "good"
+        if not image_dir.is_dir():
+            raise FileNotFoundError(
+                f"Training directory not found: {image_dir}. "
+                "Expected structure: <dataset_base_dir>/<object_name>/train/good/*.png"
+            )
         image_paths = sorted(image_dir.glob("*.png"))
         if image_limit is not None:
             image_paths = image_paths[:image_limit]
@@ -98,8 +108,7 @@ class TrainGoodPatchDataset(Dataset):
             for y, x in iter_patch_coords(padded_h, padded_w, patch_size):
                 self.index.append(PatchIndex(image_path, y, x, padded_h, padded_w))
 
-        self._cached_path: Path | None = None
-        self._cached_tensor: torch.Tensor | None = None
+        self._image_cache: OrderedDict[Path, torch.Tensor] = OrderedDict()
 
     def __len__(self) -> int:
         return len(self.index)
@@ -107,19 +116,27 @@ class TrainGoodPatchDataset(Dataset):
     def __getitem__(self, idx: int) -> torch.Tensor:
         item = self.index[idx]
 
-        if self._cached_path != item.image_path:
+        image = self._image_cache.get(item.image_path)
+        if image is None:
             image = load_rgb_image(item.image_path)
             image = pad_to_patch_multiple(image, self.patch_size)
-            self._cached_path = item.image_path
-            self._cached_tensor = image
+            self._image_cache[item.image_path] = image
+            if len(self._image_cache) > self.cache_size:
+                self._image_cache.popitem(last=False)
+        else:
+            self._image_cache.move_to_end(item.image_path)
 
-        assert self._cached_tensor is not None
-        patch = self._cached_tensor[:, item.y:item.y + self.patch_size, item.x:item.x + self.patch_size]
+        patch = image[:, item.y:item.y + self.patch_size, item.x:item.x + self.patch_size]
         return patch
 
 
 def list_test_public_images(dataset_base_dir: Path, object_name: str) -> list[tuple[str, Path]]:
     test_dir = dataset_base_dir / object_name / "test_public"
+    if not test_dir.is_dir():
+        raise FileNotFoundError(
+            f"Test directory not found: {test_dir}. "
+            "Expected structure: <dataset_base_dir>/<object_name>/test_public/<defect_name>/*.png"
+        )
     result: list[tuple[str, Path]] = []
     for defect_dir in sorted(test_dir.iterdir()):
         if not defect_dir.is_dir() or defect_dir.name == "ground_truth":

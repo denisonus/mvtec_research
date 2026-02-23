@@ -24,8 +24,14 @@ python workspace/local_eval/train_ae_vae.py \
   --patch_size 512 \
   --epochs 5 \
   --batch_size 4 \
+  --val_split 0.1 \
   --output_dir workspace/local_eval/experiments/exp01/checkpoints
 ```
+
+Notes:
+- `patch_size` must be divisible by 16.
+- `best.pt` is selected by validation loss if `--val_split > 0`, otherwise by training loss.
+- `run_config.json` and `train_history.json` are saved with checkpoints.
 
 ## Infer anomaly maps
 ```bash
