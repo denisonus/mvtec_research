@@ -1,0 +1,32 @@
+{
+  "methods": [
+    {
+      "name": "my_sota_method",
+      "train_cmd_template": [
+        "/Users/denys/Ukma/4year/computer_vision/.venv/bin/python",
+        "workspace/local_eval/train_my_method.py",
+        "--dataset_base_dir",
+        "{dataset_base_dir}",
+        "--object_name",
+        "{object_name}",
+        "--output_dir",
+        "{checkpoint_dir}",
+        "--seed",
+        "{seed}"
+      ],
+      "infer_cmd_template": [
+        "/Users/denys/Ukma/4year/computer_vision/.venv/bin/python",
+        "workspace/local_eval/infer_my_method.py",
+        "--dataset_base_dir",
+        "{dataset_base_dir}",
+        "--object_name",
+        "{object_name}",
+        "--checkpoint",
+        "{checkpoint}",
+        "--anomaly_maps_dir",
+        "{anomaly_maps_dir}"
+      ],
+      "checkpoint_relpath": "best.pt"
+    }
+  ]
+}

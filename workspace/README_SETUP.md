@@ -58,6 +58,38 @@ python evaluate_experiment.py \
 python print_metrics.py --metrics_folder ../workspace/local_eval/metrics
 ```
 
+## Compare multiple methods (AE, VAE, ...)
+Run a standardized benchmark across methods and seeds:
+```bash
+python workspace/local_eval/benchmark_methods.py \
+  --dataset_base_dir data/can \
+  --object_name can \
+  --methods ae vae \
+  --seeds 42 43 44 \
+  --epochs 5 \
+  --batch_size 4 \
+  --patch_size 512
+```
+
+Results are written to:
+- `workspace/local_eval/benchmark_runs/<object>/summary/per_run.csv`
+- `workspace/local_eval/benchmark_runs/<object>/summary/by_method.csv`
+
+Add custom methods via JSON config:
+```bash
+python workspace/local_eval/benchmark_methods.py \
+  --dataset_base_dir data/can \
+  --object_name can \
+  --methods ae vae my_sota_method \
+  --custom_methods_config workspace/local_eval/custom_methods.example.json
+```
+
+Supported placeholders in custom command templates:
+- `{dataset_base_dir}`, `{object_name}`, `{patch_size}`, `{batch_size}`
+- `{epochs}`, `{lr}`, `{latent_channels}`, `{beta}`
+- `{validation_split}`, `{checkpoint_dir}`, `{checkpoint}`, `{anomaly_maps_dir}`
+- `{metrics_dir}`, `{seed}`, `{num_workers}`, `{cache_size}`
+
 ## Prepare submission archive
 Put predictions into:
 
