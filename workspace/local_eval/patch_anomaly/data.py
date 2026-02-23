@@ -144,3 +144,21 @@ def list_test_public_images(dataset_base_dir: Path, object_name: str) -> list[tu
         for image_path in sorted(defect_dir.glob("*.png")):
             result.append((defect_dir.name, image_path))
     return result
+
+
+def list_good_images(
+    dataset_base_dir: Path,
+    object_name: str,
+    split: str,
+    image_limit: int | None = None,
+) -> list[Path]:
+    split_good_dir = dataset_base_dir / object_name / split / "good"
+    if not split_good_dir.is_dir():
+        raise FileNotFoundError(
+            f"Directory not found: {split_good_dir}. "
+            "Expected structure: <dataset_base_dir>/<object_name>/<split>/good/*.png"
+        )
+    image_paths = sorted(split_good_dir.glob("*.png"))
+    if image_limit is not None:
+        image_paths = image_paths[:image_limit]
+    return image_paths

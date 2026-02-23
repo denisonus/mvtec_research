@@ -21,9 +21,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--latent_channels", type=int, default=128)
     parser.add_argument("--beta", type=float, default=0.01)
     parser.add_argument("--image_limit", type=int, default=None)
+    parser.add_argument("--validation_split", type=str, default="validation")
+    parser.add_argument("--validation_image_limit", type=int, default=None)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--cache_size", type=int, default=8)
-    parser.add_argument("--val_split", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--output_dir",
@@ -37,8 +38,13 @@ def main() -> None:
     args = parse_args()
 
     import torch
-    from torch.utils.data import DataLoader, Subset
-    from patch_anomaly.data import TrainGoodPatchDataset
+    from torch.utils.data import DataLoader
+    from patch_anomaly.data import (
+        TrainGoodPatchDataset,
+        extract_patches,
+        list_good_images,
+        load_rgb_image,
+    )
     from patch_anomaly.models import ae_loss, build_model, vae_loss
 
     if args.patch_size <= 0:
@@ -48,9 +54,6 @@ def main() -> None:
             f"--patch_size ({args.patch_size}) must be divisible by 16 "
             "because the model downsamples 4x by stride-2 convolutions."
         )
-    if not (0.0 <= args.val_split < 1.0):
-        raise ValueError("--val_split must be in [0.0, 1.0).")
-
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -78,36 +81,27 @@ def main() -> None:
     if len(dataset) == 0:
         raise RuntimeError("No training patches found. Check dataset path/object name.")
 
-    indices = list(range(len(dataset)))
-    rng = random.Random(args.seed)
-    rng.shuffle(indices)
-    val_size = int(len(indices) * args.val_split)
-    if args.val_split > 0.0 and len(indices) > 1 and val_size == 0:
-        val_size = 1
-    train_indices = indices[val_size:]
-    val_indices = indices[:val_size]
-    if len(train_indices) == 0:
-        raise RuntimeError("Training split is empty. Reduce --val_split or add more data.")
+    validation_image_paths = list_good_images(
+        dataset_base_dir=args.dataset_base_dir,
+        object_name=args.object_name,
+        split=args.validation_split,
+        image_limit=args.validation_image_limit,
+    )
+    if len(validation_image_paths) == 0:
+        raise RuntimeError(
+            f"No validation images found in split '{args.validation_split}/good'."
+        )
+    print(
+        f"Validation source: split='{args.validation_split}' images={len(validation_image_paths)}"
+    )
 
     train_loader = DataLoader(
-        Subset(dataset, train_indices),
+        dataset,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
         pin_memory=torch.cuda.is_available(),
     )
-    val_loader = None
-    if len(val_indices) > 0:
-        val_loader = DataLoader(
-            Subset(dataset, val_indices),
-            batch_size=args.batch_size,
-            shuffle=False,
-            num_workers=args.num_workers,
-            pin_memory=torch.cuda.is_available(),
-        )
-        print(f"Split patches: train={len(train_indices)} val={len(val_indices)}")
-    else:
-        print(f"Split patches: train={len(train_indices)} val=0 (disabled)")
 
     model = build_model(args.model_type, latent_channels=args.latent_channels).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -143,21 +137,21 @@ def main() -> None:
             total_kld += kld.item() * batch.size(0)
             progress.set_postfix(loss=loss.item())
 
-        mean_loss = total_loss / len(train_indices)
-        mean_recon = total_recon / len(train_indices)
-        mean_kld = total_kld / len(train_indices)
+        mean_loss = total_loss / len(dataset)
+        mean_recon = total_recon / len(dataset)
+        mean_kld = total_kld / len(dataset)
 
-        val_loss = None
-        val_recon = None
-        val_kld = None
-        if val_loader is not None:
-            model.eval()
-            total_val_loss = 0.0
-            total_val_recon = 0.0
-            total_val_kld = 0.0
-            with torch.no_grad():
-                for batch in val_loader:
-                    batch = batch.to(device)
+        model.eval()
+        total_val_loss = 0.0
+        total_val_recon = 0.0
+        total_val_kld = 0.0
+        total_val_patches = 0
+        with torch.no_grad():
+            for image_path in validation_image_paths:
+                image = load_rgb_image(image_path)
+                patches, _, _ = extract_patches(image, args.patch_size)
+                for start in range(0, patches.size(0), args.batch_size):
+                    batch = patches[start:start + args.batch_size].to(device)
                     if args.model_type == "ae":
                         recon = model(batch)
                         loss = ae_loss(recon, batch)
@@ -166,31 +160,31 @@ def main() -> None:
                     else:
                         recon, mu, logvar = model(batch)
                         loss, recon_loss, kld = vae_loss(recon, batch, mu, logvar, beta=args.beta)
-                    total_val_loss += loss.item() * batch.size(0)
-                    total_val_recon += recon_loss.item() * batch.size(0)
-                    total_val_kld += kld.item() * batch.size(0)
-            val_loss = total_val_loss / len(val_indices)
-            val_recon = total_val_recon / len(val_indices)
-            val_kld = total_val_kld / len(val_indices)
+                    bs = batch.size(0)
+                    total_val_loss += loss.item() * bs
+                    total_val_recon += recon_loss.item() * bs
+                    total_val_kld += kld.item() * bs
+                    total_val_patches += bs
+        if total_val_patches == 0:
+            raise RuntimeError("Validation produced zero patches. Check validation split data.")
+        val_loss = total_val_loss / total_val_patches
+        val_recon = total_val_recon / total_val_patches
+        val_kld = total_val_kld / total_val_patches
 
         row = {
             "epoch": epoch,
             "loss": mean_loss,
             "recon": mean_recon,
             "kld": mean_kld,
+            "val_loss": val_loss,
+            "val_recon": val_recon,
+            "val_kld": val_kld,
         }
-        if val_loss is not None and val_recon is not None and val_kld is not None:
-            row["val_loss"] = val_loss
-            row["val_recon"] = val_recon
-            row["val_kld"] = val_kld
         history.append(row)
-        if val_loss is None:
-            print(f"epoch={epoch} loss={mean_loss:.6f} recon={mean_recon:.6f} kld={mean_kld:.6f}")
-        else:
-            print(
-                f"epoch={epoch} loss={mean_loss:.6f} recon={mean_recon:.6f} kld={mean_kld:.6f} "
-                f"val_loss={val_loss:.6f} val_recon={val_recon:.6f} val_kld={val_kld:.6f}"
-            )
+        print(
+            f"epoch={epoch} loss={mean_loss:.6f} recon={mean_recon:.6f} kld={mean_kld:.6f} "
+            f"val_loss={val_loss:.6f} val_recon={val_recon:.6f} val_kld={val_kld:.6f}"
+        )
 
         ckpt = {
             "state_dict": model.state_dict(),
@@ -201,9 +195,8 @@ def main() -> None:
             "seed": args.seed,
         }
         torch.save(ckpt, args.output_dir / "last.pt")
-        selection_loss = val_loss if val_loss is not None else mean_loss
-        if selection_loss < best_loss:
-            best_loss = selection_loss
+        if val_loss < best_loss:
+            best_loss = val_loss
             torch.save(ckpt, args.output_dir / "best.pt")
 
     with (args.output_dir / "train_history.json").open("w") as f:
