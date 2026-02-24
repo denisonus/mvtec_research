@@ -2,3 +2,4 @@ data/
 .vscode/settings.json
 .venv
 .github
+workspace/local_eval/benchmark_runs

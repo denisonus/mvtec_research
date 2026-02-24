@@ -98,11 +98,20 @@ def read_tiff(file_path_no_ext, exts=('.tif', '.tiff', '.TIF', '.TIFF')):
     """
     # Get all file paths that exist
     file_paths = []
+    seen_files = set()
     for ext in exts:
         # Make sure the file path does not already end with a tiff extension.
         assert not file_path_no_ext.endswith(ext)
         file_path = file_path_no_ext + ext
         if os.path.exists(file_path):
+            # On case-insensitive file systems (e.g., default macOS), the same
+            # file can match both ".tiff" and ".TIFF". De-duplicate by inode
+            # to avoid false-positive ambiguity errors.
+            file_stat = os.stat(file_path)
+            file_id = (file_stat.st_dev, file_stat.st_ino)
+            if file_id in seen_files:
+                continue
+            seen_files.add(file_id)
             file_paths.append(file_path)
 
     if len(file_paths) == 0:

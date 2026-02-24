@@ -52,106 +52,37 @@ def repo_root() -> Path:
 
 
 def _template_builtin_specs(py: str) -> dict[str, MethodSpec]:
-    return {
-        "ae": MethodSpec(
-            name="ae",
+    def _ae_vae_spec(model_type: str) -> MethodSpec:
+        return MethodSpec(
+            name=model_type,
             train_cmd_template=[
-                py,
-                "workspace/local_eval/train_ae_vae.py",
-                "--dataset_base_dir",
-                "{dataset_base_dir}",
-                "--object_name",
-                "{object_name}",
-                "--model_type",
-                "ae",
-                "--patch_size",
-                "{patch_size}",
-                "--batch_size",
-                "{batch_size}",
-                "--epochs",
-                "{epochs}",
-                "--lr",
-                "{lr}",
-                "--latent_channels",
-                "{latent_channels}",
-                "--beta",
-                "{beta}",
-                "--validation_split",
-                "{validation_split}",
-                "--output_dir",
-                "{checkpoint_dir}",
-                "--seed",
-                "{seed}",
-                "--num_workers",
-                "{num_workers}",
-                "--cache_size",
-                "{cache_size}",
+                py, "workspace/local_eval/train_ae_vae.py",
+                "--dataset_base_dir", "{dataset_base_dir}",
+                "--object_name", "{object_name}",
+                "--model_type", model_type,
+                "--patch_size", "{patch_size}",
+                "--batch_size", "{batch_size}",
+                "--epochs", "{epochs}",
+                "--lr", "{lr}",
+                "--latent_channels", "{latent_channels}",
+                "--beta", "{beta}",
+                "--validation_split", "{validation_split}",
+                "--output_dir", "{checkpoint_dir}",
+                "--seed", "{seed}",
+                "--num_workers", "{num_workers}",
+                "--cache_size", "{cache_size}",
             ],
             infer_cmd_template=[
-                py,
-                "workspace/local_eval/infer_ae_vae.py",
-                "--dataset_base_dir",
-                "{dataset_base_dir}",
-                "--object_name",
-                "{object_name}",
-                "--checkpoint",
-                "{checkpoint}",
-                "--anomaly_maps_dir",
-                "{anomaly_maps_dir}",
-                "--batch_size",
-                "{batch_size}",
+                py, "workspace/local_eval/infer_ae_vae.py",
+                "--dataset_base_dir", "{dataset_base_dir}",
+                "--object_name", "{object_name}",
+                "--checkpoint", "{checkpoint}",
+                "--anomaly_maps_dir", "{anomaly_maps_dir}",
+                "--batch_size", "{batch_size}",
             ],
-        ),
-        "vae": MethodSpec(
-            name="vae",
-            train_cmd_template=[
-                py,
-                "workspace/local_eval/train_ae_vae.py",
-                "--dataset_base_dir",
-                "{dataset_base_dir}",
-                "--object_name",
-                "{object_name}",
-                "--model_type",
-                "vae",
-                "--patch_size",
-                "{patch_size}",
-                "--batch_size",
-                "{batch_size}",
-                "--epochs",
-                "{epochs}",
-                "--lr",
-                "{lr}",
-                "--latent_channels",
-                "{latent_channels}",
-                "--beta",
-                "{beta}",
-                "--validation_split",
-                "{validation_split}",
-                "--output_dir",
-                "{checkpoint_dir}",
-                "--seed",
-                "{seed}",
-                "--num_workers",
-                "{num_workers}",
-                "--cache_size",
-                "{cache_size}",
-            ],
-            infer_cmd_template=[
-                py,
-                "workspace/local_eval/infer_ae_vae.py",
-                "--dataset_base_dir",
-                "{dataset_base_dir}",
-                "--object_name",
-                "{object_name}",
-                "--checkpoint",
-                "{checkpoint}",
-                "--anomaly_maps_dir",
-                "{anomaly_maps_dir}",
-                "--batch_size",
-                "{batch_size}",
-            ],
-        ),
-    }
+        )
+
+    return {t: _ae_vae_spec(t) for t in ("ae", "vae")}
 
 
 def _load_custom_specs(config_path: Path | None) -> dict[str, MethodSpec]:
@@ -196,10 +127,8 @@ def _read_metrics(metrics_json: Path, object_name: str) -> dict[str, float]:
     if object_name not in payload:
         raise KeyError(f"Metrics file {metrics_json} does not contain object '{object_name}'.")
     return {
-        "object_au_pro": float(payload[object_name]["au_pro"]),
-        "object_au_roc": float(payload[object_name]["classification_au_roc"]),
-        "mean_au_pro": float(payload["mean_au_pro"]),
-        "mean_au_roc": float(payload["mean_classification_au_roc"]),
+        "au_pro": float(payload[object_name]["au_pro"]),
+        "au_roc": float(payload[object_name]["classification_au_roc"]),
     }
 
 
@@ -218,22 +147,16 @@ def _aggregate(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     agg_rows: list[dict[str, Any]] = []
     for method_name, method_rows in sorted(by_method.items()):
-        object_au_pro_values = [float(r["object_au_pro"]) for r in method_rows]
-        object_au_roc_values = [float(r["object_au_roc"]) for r in method_rows]
-        mean_au_pro_values = [float(r["mean_au_pro"]) for r in method_rows]
-        mean_au_roc_values = [float(r["mean_au_roc"]) for r in method_rows]
+        au_pro_values = [float(r["au_pro"]) for r in method_rows]
+        au_roc_values = [float(r["au_roc"]) for r in method_rows]
         agg_rows.append(
             {
                 "method": method_name,
                 "runs": len(method_rows),
-                "object_au_pro_mean": mean(object_au_pro_values),
-                "object_au_pro_std": pstdev(object_au_pro_values) if len(method_rows) > 1 else 0.0,
-                "object_au_roc_mean": mean(object_au_roc_values),
-                "object_au_roc_std": pstdev(object_au_roc_values) if len(method_rows) > 1 else 0.0,
-                "mean_au_pro_mean": mean(mean_au_pro_values),
-                "mean_au_pro_std": pstdev(mean_au_pro_values) if len(method_rows) > 1 else 0.0,
-                "mean_au_roc_mean": mean(mean_au_roc_values),
-                "mean_au_roc_std": pstdev(mean_au_roc_values) if len(method_rows) > 1 else 0.0,
+                "au_pro_mean": mean(au_pro_values),
+                "au_pro_std": pstdev(au_pro_values) if len(method_rows) > 1 else 0.0,
+                "au_roc_mean": mean(au_roc_values),
+                "au_roc_std": pstdev(au_roc_values) if len(method_rows) > 1 else 0.0,
             }
         )
     return agg_rows
@@ -246,8 +169,8 @@ def main() -> None:
 
     # Resolve relative paths to absolute so they work in any subprocess cwd
     # (the evaluator runs from mvtec_ad_evaluation/, not the repo root).
-    args.dataset_base_dir = args.dataset_base_dir.resolve()
-    args.experiment_root = args.experiment_root.resolve()
+    args.dataset_base_dir = args.dataset_base_dir.resolve() # type: ignore[attr-defined]
+    args.experiment_root = args.experiment_root.resolve() # type: ignore[attr-defined]
 
     builtins = _template_builtin_specs(py=py)
     custom = _load_custom_specs(args.custom_methods_config)
@@ -326,7 +249,6 @@ def main() -> None:
                 {
                     "method": method_name,
                     "seed": seed,
-                    "run_dir": str(run_dir),
                     **metrics,
                 }
             )
@@ -336,21 +258,17 @@ def main() -> None:
     by_method_csv = summary_dir / "by_method.csv"
     by_method_json = summary_dir / "by_method.json"
 
-    run_fields = ["method", "seed", "run_dir", "object_au_pro", "object_au_roc", "mean_au_pro", "mean_au_roc"]
+    run_fields = ["method", "seed", "au_pro", "au_roc"]
     _write_csv(per_run_csv, run_fields, run_rows)
 
     by_method_rows = _aggregate(run_rows)
     method_fields = [
         "method",
         "runs",
-        "object_au_pro_mean",
-        "object_au_pro_std",
-        "object_au_roc_mean",
-        "object_au_roc_std",
-        "mean_au_pro_mean",
-        "mean_au_pro_std",
-        "mean_au_roc_mean",
-        "mean_au_roc_std",
+        "au_pro_mean",
+        "au_pro_std",
+        "au_roc_mean",
+        "au_roc_std",
     ]
     _write_csv(by_method_csv, method_fields, by_method_rows)
     with by_method_json.open("w") as f:

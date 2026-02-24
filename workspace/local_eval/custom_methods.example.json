@@ -3,7 +3,7 @@
     {
       "name": "my_sota_method",
       "train_cmd_template": [
-        "/Users/denys/Ukma/4year/computer_vision/.venv/bin/python",
+        "python",
         "workspace/local_eval/train_my_method.py",
         "--dataset_base_dir",
         "{dataset_base_dir}",
@@ -15,7 +15,7 @@
         "{seed}"
       ],
       "infer_cmd_template": [
-        "/Users/denys/Ukma/4year/computer_vision/.venv/bin/python",
+        "python",
         "workspace/local_eval/infer_my_method.py",
         "--dataset_base_dir",
         "{dataset_base_dir}",
