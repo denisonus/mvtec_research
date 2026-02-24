@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--object_name", type=str, default="can")
     parser.add_argument("--methods", nargs="+", default=["ae", "vae"])
     parser.add_argument("--custom_methods_config", type=Path, default=None)
-    parser.add_argument("--seeds", nargs="+", type=int, default=[42, 43, 44])
+    parser.add_argument("--seeds", nargs="+", type=int, default=[42])
     parser.add_argument(
         "--experiment_root",
         type=Path,
@@ -64,7 +64,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--patch_size", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=8)
+    parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--latent_channels", type=int, default=128)
     parser.add_argument("--beta", type=float, default=0.01)
@@ -110,6 +111,8 @@ def _template_builtin_specs(py: str) -> dict[str, MethodSpec]:
                 "{batch_size}",
                 "--epochs",
                 "{epochs}",
+                "--patience",
+                "{patience}",
                 "--lr",
                 "{lr}",
                 "--latent_channels",
@@ -191,7 +194,6 @@ def _maybe_append_optional_args(cmd: list[str], args: argparse.Namespace) -> lis
 
 def _run_command(cmd: list[str], cwd: Path) -> None:
     """Run a subprocess, logging the command line first."""
-    logger.info("Running: (cd %s && %s)", cwd, " ".join(cmd))
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
@@ -336,6 +338,7 @@ def main() -> None:
                 "patch_size": str(args.patch_size),
                 "batch_size": str(args.batch_size),
                 "epochs": str(args.epochs),
+                "patience": str(args.patience),
                 "lr": str(args.lr),
                 "latent_channels": str(args.latent_channels),
                 "beta": str(args.beta),

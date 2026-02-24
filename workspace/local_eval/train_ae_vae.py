@@ -36,7 +36,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_type", choices=["ae", "vae"], default="ae")
     parser.add_argument("--patch_size", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--epochs", type=int, default=8)
+    parser.add_argument("--patience", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--latent_channels", type=int, default=128)
     parser.add_argument("--beta", type=float, default=0.01)
@@ -161,6 +162,7 @@ def main() -> None:
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     best_loss = float("inf")
+    epochs_no_improve = 0
     history: list[dict[str, float]] = []
 
     # ══════════════════════════════════════════════════════════════
@@ -285,8 +287,17 @@ def main() -> None:
         torch.save(ckpt, args.output_dir / "last.pt")
         if val_loss < best_loss:
             best_loss = val_loss
+            epochs_no_improve = 0
             torch.save(ckpt, args.output_dir / "best.pt")
             logger.info("  ↳ New best val_loss=%.6f — saved best.pt", val_loss)
+        elif args.patience > 0:
+            epochs_no_improve += 1
+            if epochs_no_improve >= args.patience:
+                logger.info(
+                    "Early stopping triggered after %d epochs without improvement.",
+                    args.patience,
+                )
+                break
 
     # ── persist training history and run config ──
     with (args.output_dir / "train_history.json").open("w") as f:
