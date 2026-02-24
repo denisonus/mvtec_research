@@ -25,7 +25,7 @@ python workspace/local_eval/train_ae_vae.py \
   --epochs 5 \
   --batch_size 4 \
   --validation_split validation \
-  --output_dir workspace/local_eval/experiments/exp01/checkpoints
+  --output_dir workspace/local_eval/benchmark_runs/checkpoints
 ```
 
 Notes:
@@ -38,8 +38,8 @@ Notes:
 python workspace/local_eval/infer_ae_vae.py \
   --dataset_base_dir data/can \
   --object_name can \
-  --checkpoint workspace/local_eval/experiments/exp01/checkpoints/best.pt \
-  --anomaly_maps_dir workspace/local_eval/experiments/exp01/anomaly_maps
+  --checkpoint workspace/local_eval/benchmark_runs/checkpoints/best.pt \
+  --anomaly_maps_dir workspace/local_eval/benchmark_runs/anomaly_maps
 ```
 
 ## Run local evaluation
@@ -47,7 +47,7 @@ python workspace/local_eval/infer_ae_vae.py \
 cd mvtec_ad_evaluation
 python evaluate_experiment.py \
   --dataset_base_dir ../data/can \
-  --anomaly_maps_dir ../workspace/local_eval/experiments/exp01/anomaly_maps \
+  --anomaly_maps_dir ../workspace/local_eval/benchmark_runs/anomaly_maps \
   --output_dir ../workspace/local_eval/metrics \
   --evaluated_objects can \
   --pro_integration_limit 0.3
