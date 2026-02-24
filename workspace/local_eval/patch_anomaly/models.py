@@ -5,6 +5,8 @@ for patch-based anomaly detection on MVTec AD2.
 Architecture overview:
   • ConvBackbone: 4-layer CNN encoder (stride-2 convolutions → 16× spatial
     down-sampling) mirrored by a 4-layer transpose-conv decoder.
+    Each conv block uses Conv → BatchNorm → LeakyReLU for stable training
+    and better gradient flow.
   • AutoEncoder: wraps the backbone – forward pass = encode → decode.
   • VariationalAutoEncoder: adds μ/log-σ² heads after the encoder, applies
     the reparameterisation trick, then decodes.
@@ -34,8 +36,9 @@ class ConvBackbone(nn.Module):
     Decoder:  [latent_channels, H/16, W/16] → [3, H, W]
 
     Each stage halves (encoder) or doubles (decoder) the spatial resolution
-    via stride-2 (transposed) convolutions with 4×4 kernels and ReLU.
-    The final decoder layer uses Sigmoid to constrain output to [0, 1].
+    via stride-2 (transposed) convolutions with 4×4 kernels, BatchNorm, and
+    LeakyReLU.  The final decoder layer uses Sigmoid to constrain output
+    to [0, 1].
     """
 
     def __init__(self, latent_channels: int):
@@ -44,13 +47,17 @@ class ConvBackbone(nn.Module):
         #   3 → 32 → 64 → 128 → latent_channels   (spatial: H → H/16)
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(32),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(128, latent_channels, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(latent_channels),
+            nn.LeakyReLU(0.2, inplace=True),
         )
         # Decoder: mirror of encoder – up-sample back to original resolution
         #   latent_channels → 128 → 64 → 32 → 3   (spatial: H/16 → H)
@@ -58,11 +65,14 @@ class ConvBackbone(nn.Module):
             nn.ConvTranspose2d(
                 latent_channels, 128, kernel_size=4, stride=2, padding=1
             ),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(32),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.ConvTranspose2d(32, 3, kernel_size=4, stride=2, padding=1),
             nn.Sigmoid(),  # output pixels in [0, 1] to match normalised inputs
         )
@@ -78,7 +88,7 @@ class AutoEncoder(nn.Module):
     model cannot faithfully reconstruct are likely anomalous.
     """
 
-    def __init__(self, latent_channels: int = 256):
+    def __init__(self, latent_channels: int = 128):
         super().__init__()
         self.backbone = ConvBackbone(latent_channels=latent_channels)
 
@@ -99,7 +109,7 @@ class VariationalAutoEncoder(nn.Module):
     regularises the latent space toward a standard normal distribution.
     """
 
-    def __init__(self, latent_channels: int = 256):
+    def __init__(self, latent_channels: int = 128):
         super().__init__()
         self.backbone = ConvBackbone(latent_channels=latent_channels)
 
