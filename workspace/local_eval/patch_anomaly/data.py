@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
 from typing import Iterable
-
+import random
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -75,7 +75,7 @@ def pad_to_patch_multiple(image: torch.Tensor, patch_size: int) -> torch.Tensor:
         pad_h,
         pad_w,
     )
-    return F.pad(image, (0, pad_w, 0, pad_h), mode="constant", value=0.0)
+    return F.pad(image.unsqueeze(0), (0, pad_w, 0, pad_h), mode="replicate").squeeze(0)
 
 
 def iter_patch_coords(
@@ -158,86 +158,65 @@ def stitch_patch_maps(
 
 
 class TrainGoodPatchDataset(Dataset):
-    """PyTorch dataset that serves fixed-size patches from *good* training
-    images.
-
-    On construction it only reads image *headers* (for size info) to build
-    an index.  Actual pixel data is loaded lazily and kept in a bounded
-    LRU cache (``cache_size`` images at most) so we don't blow up memory.
-    """
+    """PyTorch dataset that serves RANDOM crops from *good* training images."""
 
     def __init__(
-        self,
-        dataset_base_dir: Path,
-        object_name: str,
-        patch_size: int,
-        image_limit: int | None = None,
-        cache_size: int = 8,
+            self,
+            dataset_base_dir: Path,
+            object_name: str,
+            patch_size: int,
+            image_limit: int | None = None,
+            cache_size: int = 8,
+            patches_per_image: int = 12,
     ):
         if patch_size <= 0:
             raise ValueError("patch_size must be a positive integer.")
         self.patch_size = patch_size
         self.cache_size = max(int(cache_size), 1)
+        self.patches_per_image = patches_per_image
 
-        # Training images live under <base>/<object>/train/good/
         image_dir = dataset_base_dir / object_name / "train" / "good"
-        if not image_dir.is_dir():
-            raise FileNotFoundError(
-                f"Training directory not found: {image_dir}. "
-                "Expected structure: <dataset_base_dir>/<object_name>/train/good/*.png"
-            )
-        image_paths = sorted(image_dir.glob("*.png"))
+        self.image_paths = sorted(image_dir.glob("*.png"))
         if image_limit is not None:
-            image_paths = image_paths[:image_limit]
+            self.image_paths = self.image_paths[:image_limit]
 
-        # Build a flat index: one entry per (image, patch) pair.
-        # We only read the image header to get the dimensions – no heavy I/O.
-        self.index: list[PatchIndex] = []
-        for image_path in image_paths:
-            with Image.open(image_path) as img:
-                width, height = img.size
-            padded_h = ceil(height / patch_size) * patch_size
-            padded_w = ceil(width / patch_size) * patch_size
-            for y, x in iter_patch_coords(padded_h, padded_w, patch_size):
-                self.index.append(PatchIndex(image_path, y, x, padded_h, padded_w))
-
-        # LRU cache: maps image paths to loaded+padded tensors
         self._image_cache: OrderedDict[Path, torch.Tensor] = OrderedDict()
 
         logger.info(
-            "TrainGoodPatchDataset ready: %d images → %d patches  "
-            "(patch_size=%d, cache_size=%d)",
-            len(image_paths),
-            len(self.index),
-            patch_size,
-            self.cache_size,
+            "TrainGoodPatchDataset ready: %d images → %d random patches per epoch",
+            len(self.image_paths),
+            len(self),
         )
 
     def __len__(self) -> int:
-        return len(self.index)
+        return len(self.image_paths) * self.patches_per_image
 
     def __getitem__(self, idx: int) -> torch.Tensor:
-        item = self.index[idx]
+        image_idx = idx // self.patches_per_image
+        image_path = self.image_paths[image_idx]
 
-        # Try the LRU cache first to avoid re-reading from disk
-        image = self._image_cache.get(item.image_path)
+        image = self._image_cache.get(image_path)
         if image is None:
-            # Cache miss → load from disk, pad, and insert into the cache
-            image = load_rgb_image(item.image_path)
-            image = pad_to_patch_multiple(image, self.patch_size)
-            self._image_cache[item.image_path] = image
-            if len(self._image_cache) > self.cache_size:
-                evicted_path, _ = self._image_cache.popitem(last=False)
-                logger.debug("Cache evict: %s", evicted_path.name)
-        else:
-            # Cache hit → mark as recently used
-            self._image_cache.move_to_end(item.image_path)
+            image = load_rgb_image(image_path)
 
-        # Slice out the patch at (y, x) from the padded image
-        patch = image[
-            :, item.y : item.y + self.patch_size, item.x : item.x + self.patch_size
-        ]
-        return patch
+            _, h, w = image.shape
+            pad_h = max(0, self.patch_size - h)
+            pad_w = max(0, self.patch_size - w)
+            if pad_h > 0 or pad_w > 0:
+                image = F.pad(image.unsqueeze(0), (0, pad_w, 0, pad_h), mode="replicate").squeeze(0)
+
+            self._image_cache[image_path] = image
+            if len(self._image_cache) > self.cache_size:
+                self._image_cache.popitem(last=False)
+        else:
+            self._image_cache.move_to_end(image_path)
+
+        _, h, w = image.shape
+
+        y = random.randint(0, h - self.patch_size)
+        x = random.randint(0, w - self.patch_size)
+
+        return image[:, y: y + self.patch_size, x: x + self.patch_size]
 
 
 # ── image listing helpers ──────────────────────────────────────────────

@@ -17,9 +17,10 @@ import argparse
 import logging
 import time
 from pathlib import Path
-
+import torch.nn.functional as F
 import tifffile
 from tqdm import tqdm
+from scipy.ndimage import gaussian_filter
 
 # ── module-level logger ────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
@@ -114,43 +115,32 @@ def main() -> None:
     logger.info("Found %d test_public images to process", len(image_items))
 
     # ══════════════════════════════════════════════════════════════
-    # INFERENCE LOOP — process one image at a time
+    # INFERENCE LOOP — process one image at a time (FCN approach)
     # ══════════════════════════════════════════════════════════════
     t0 = time.time()
     with torch.no_grad():
         for defect_name, image_path in tqdm(image_items, desc="Infer test_public"):
-            # 1) Load image and cut into patches
             image = load_rgb_image(image_path)
-            patches, coords, original_hw = extract_patches(image, patch_size)
+            _, original_h, original_w = image.shape
 
-            # 2) Reconstruct each patch batch and compute pixel-wise MSE
-            patch_maps = []
-            for start in range(0, patches.size(0), args.batch_size):
-                batch = patches[start : start + args.batch_size].to(device)
+            pad_h = (16 - original_h % 16) % 16
+            pad_w = (16 - original_w % 16) % 16
 
-                if model_type == "ae":
-                    recon = model(batch)
-                else:
-                    recon, _, _ = model(batch)  # discard mu/logvar at inference
+            padded = F.pad(image.unsqueeze(0), (0, pad_w, 0, pad_h), mode="replicate").to(device)
 
-                # Per-pixel MSE across the 3 colour channels → [B, H, W]
-                err = torch.mean((recon - batch) ** 2, dim=1)
-                patch_maps.append(err.detach().cpu())
+            if model_type == "ae":
+                recon = model(padded)
+            else:
+                recon, _, _ = model(padded)
 
-            # 3) Stitch patch-level error maps into a full-resolution map
-            patch_maps_tensor = torch.cat(patch_maps, dim=0)
-            full_map = stitch_patch_maps(
-                patch_maps=patch_maps_tensor,
-                coords=coords,
-                original_hw=original_hw,
-                patch_size=patch_size,
-            )
+            err = torch.mean((recon - padded) ** 2, dim=1).squeeze(0).cpu().numpy()
 
-            # 4) Save the anomaly map as a compressed TIFF
+            full_map = err[:original_h, :original_w]
+
+            full_map = gaussian_filter(full_map, sigma=12.0)
+
             image_id = image_path.stem
-            out_dir = (
-                args.anomaly_maps_dir / args.object_name / "test_public" / defect_name
-            )
+            out_dir = args.anomaly_maps_dir / args.object_name / "test_public" / defect_name
             out_dir.mkdir(parents=True, exist_ok=True)
             out_path = out_dir / f"{image_id}.tiff"
 
